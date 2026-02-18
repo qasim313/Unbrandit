@@ -1,0 +1,23 @@
+"use client";
+
+import { create } from "zustand";
+
+interface AuthState {
+  token: string | null;
+  setToken: (token: string | null) => void;
+}
+
+export const useAuth = create<AuthState>((set) => ({
+  token: null,
+  setToken: (token) => {
+    if (typeof window !== "undefined") {
+      if (token) {
+        window.localStorage.setItem("token", token);
+      } else {
+        window.localStorage.removeItem("token");
+      }
+    }
+    set({ token });
+  }
+}));
+

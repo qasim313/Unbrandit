@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+body {
+  font-family: Inter, system-ui, sans-serif;
+  background: linear-gradient(180deg, #0a0f1a 0%, #0f172a 100%);
+  min-height: 100vh;
+}
+
+@layer components {
+  .card-hover {
+    @apply transition-all duration-200 hover:shadow-glow hover:border-sky-500/30;
+  }
+  .status-pill {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+}
+
