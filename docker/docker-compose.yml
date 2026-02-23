@@ -1,55 +1,81 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: apk_whitelabel
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    volumes:
-      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     build:
       context: ..
       dockerfile: docker/Dockerfile.backend
-    env_file:
-      - ../backend/.env
-    depends_on:
-      - db
-      - redis
+    restart: unless-stopped
+    env_file: ../backend/.env
     ports:
       - "4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   worker:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.worker
-    env_file:
-      - ../worker/.env
+      context: ../worker
+      dockerfile: ../docker/Dockerfile.worker
+    platform: linux/amd64
+    restart: unless-stopped
+    env_file: ../worker/.env
+    ports:
+      - "5050:5000"
     depends_on:
-      - backend
-      - redis
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
 
   frontend:
     build:
       context: ..
       dockerfile: docker/Dockerfile.frontend
-    env_file:
-      - ../frontend/.env
-    depends_on:
-      - backend
+    restart: unless-stopped
+    env_file: ../frontend/.env
     ports:
       - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
+
+  adminer:
+    image: adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
-  db_data:
-
+  pgdata:

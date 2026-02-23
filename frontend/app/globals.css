@@ -2,20 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
 
-body {
-  font-family: Inter, system-ui, sans-serif;
-  background: linear-gradient(180deg, #0a0f1a 0%, #0f172a 100%);
-  min-height: 100vh;
+  html { font-size: 14px; }
+
+  body {
+    background-color: #0d1117;
+    color: #e6edf3;
+    -webkit-font-smoothing: antialiased;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #484f58; }
 }
 
 @layer components {
-  .card-hover {
-    @apply transition-all duration-200 hover:shadow-glow hover:border-sky-500/30;
+  .field-label {
+    @apply block text-xs font-medium text-gh-muted mb-1;
   }
-  .status-pill {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  .field-hint {
+    @apply text-xs text-gh-faint mt-1 leading-relaxed;
   }
 }
-

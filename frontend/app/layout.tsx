@@ -2,17 +2,16 @@ import "./globals.css";
 import type { ReactNode } from "react";
 
 export const metadata = {
-  title: "APK WhiteLabel Studio",
-  description: "White-label Android apps at scale"
+  title: "Unbrandit – APK WhiteLabel Studio",
+  description: "Automate Android app white-labeling. Rebrand, sign, and distribute APKs and AABs at scale.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="h-full">
-      <body className="h-full bg-slate-950 text-slate-50">
-        <div className="min-h-screen flex flex-col">{children}</div>
+      <body className="h-full bg-gh-bg text-gh-default antialiased">
+        {children}
       </body>
     </html>
   );
 }
-

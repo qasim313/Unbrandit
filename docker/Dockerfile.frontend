@@ -1,18 +1,21 @@
 FROM node:22-alpine AS base
 
-WORKDIR /app
-
-COPY frontend/package.json ./frontend/package.json
 WORKDIR /app/frontend
 
-# Install all dependencies (including dev) for building Tailwind/PostCSS.
+COPY frontend/package.json ./
 RUN npm install
 
 COPY frontend ./
 
 RUN npm run build
 
+# Copy static assets into the standalone output (required by Next.js standalone mode)
+RUN cp -r .next/static .next/standalone/.next/static && \
+    cp -r public .next/standalone/public 2>/dev/null || true
+
 EXPOSE 3000
 
-CMD ["npm", "start"]
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
 
+CMD ["node", ".next/standalone/server.js"]

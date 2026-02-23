@@ -1,23 +1,33 @@
-"use client";
+import { InputHTMLAttributes, forwardRef, ReactNode } from "react";
+import clsx from "clsx";
 
-import { InputHTMLAttributes, forwardRef } from "react";
-import { clsx } from "clsx";
+export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+  icon?: ReactNode;
+}
 
-type Props = InputHTMLAttributes<HTMLInputElement>;
+export const Input = forwardRef<HTMLInputElement, InputProps>(
+  ({ icon, className, ...props }, ref) => {
+    return (
+      <div className="relative">
+        {icon && (
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gh-faint pointer-events-none">
+            {icon}
+          </div>
+        )}
+        <input
+          ref={ref}
+          className={clsx(
+            "w-full h-9 rounded-md border border-gh-border bg-gh-bg text-gh-default text-sm placeholder:text-gh-faint",
+            "focus:outline-none focus:border-android/50 focus:ring-1 focus:ring-android/20 transition-colors",
+            "disabled:opacity-50 disabled:cursor-not-allowed",
+            icon ? "pl-9 pr-3" : "px-3",
+            className
+          )}
+          {...props}
+        />
+      </div>
+    );
+  }
+);
 
-export const Input = forwardRef<HTMLInputElement, Props>(function Input(
-  { className, ...props },
-  ref
-) {
-  return (
-    <input
-      ref={ref}
-      className={clsx(
-        "flex h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-1 text-sm text-slate-50 placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500",
-        className
-      )}
-      {...props}
-    />
-  );
-});
-
+Input.displayName = "Input";

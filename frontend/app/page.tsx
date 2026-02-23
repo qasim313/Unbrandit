@@ -1,38 +1,51 @@
-"use client";
-
 import Link from "next/link";
 
-export default function HomePage() {
+function AndroidIcon() {
   return (
-    <div className="flex flex-1 items-center justify-center min-h-[80vh] px-4">
-      <div className="max-w-lg w-full space-y-8 text-center animate-fade-in">
-        <div className="inline-flex w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-400 to-sky-600 items-center justify-center text-white text-2xl font-bold shadow-glow">
-          A
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="#3DDC84">
+      <line x1="8.5" y1="2" x2="6" y2="5" stroke="#3DDC84" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="15.5" y1="2" x2="18" y2="5" stroke="#3DDC84" strokeWidth="1.2" strokeLinecap="round" />
+      <rect x="5" y="5" width="14" height="8" rx="4" />
+      <circle cx="9" cy="9" r="1.2" fill="#0d1117" />
+      <circle cx="15" cy="9" r="1.2" fill="#0d1117" />
+      <rect x="3" y="14" width="18" height="8" rx="2" />
+      <rect x="0.5" y="14" width="2" height="5.5" rx="1" />
+      <rect x="21.5" y="14" width="2" height="5.5" rx="1" />
+    </svg>
+  );
+}
+
+export default function LandingPage() {
+  return (
+    <div className="min-h-screen bg-gh-bg flex flex-col items-center justify-center px-4">
+      <div className="w-full max-w-sm text-center">
+        <div className="inline-flex flex-col items-center gap-4 mb-10">
+          <AndroidIcon />
+          <div>
+            <h1 className="text-xl font-semibold text-gh-default">Unbrandit</h1>
+            <p className="text-sm text-gh-muted mt-1">APK WhiteLabel Studio</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-100">
-            APK WhiteLabel Studio
-          </h1>
-          <p className="text-slate-400 mt-2">
-            Secure, scalable white-label Android builds with automated branding.
-          </p>
-        </div>
-        <div className="flex justify-center gap-3 flex-wrap">
+
+        <p className="text-sm text-gh-muted leading-relaxed mb-8">
+          Rebrand Android apps at scale. Upload, configure, and ship white-label APKs and AABs.
+        </p>
+
+        <div className="flex flex-col gap-3">
           <Link
             href="/login"
-            className="px-5 py-2.5 rounded-lg bg-sky-500 hover:bg-sky-600 text-white text-sm font-medium transition-all hover:shadow-glow"
+            className="h-10 rounded-md bg-android hover:bg-android-dim text-[#0d1117] text-sm font-semibold transition-colors flex items-center justify-center"
           >
-            Log in
+            Sign in
           </Link>
           <Link
             href="/register"
-            className="px-5 py-2.5 rounded-lg border border-slate-600 hover:bg-slate-800/80 text-slate-200 text-sm font-medium transition-colors"
+            className="h-10 rounded-md border border-gh-border bg-gh-surface hover:bg-gh-elevated text-gh-default text-sm font-medium transition-colors flex items-center justify-center"
           >
-            Register
+            Create account
           </Link>
         </div>
       </div>
     </div>
   );
 }
-

@@ -25,7 +25,10 @@
     "socket.io": "^4.8.1",
     "zod": "^3.23.8",
     "multer": "^1.4.5-lts.1",
-    "@azure/storage-blob": "^12.25.0"
+    "@azure/storage-blob": "^12.25.0",
+    "nodemailer": "^6.9.16",
+    "express-rate-limit": "^7.4.0",
+    "unzipper": "^0.12.3"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -41,6 +44,8 @@
     "eslint-plugin-import": "^2.31.0",
     "prisma": "^6.0.0",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "@types/nodemailer": "^6.4.17",
+    "@types/unzipper": "^0.10.10"
   }
 }

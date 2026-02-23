@@ -8,22 +8,41 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  email     String    @unique
-  password  String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  projects  Project[]
+  id                      String    @id @default(cuid())
+  email                   String    @unique
+  password                String
+  emailVerified           Boolean   @default(false)
+  verificationToken       String?   @unique
+  verificationTokenExpiry DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  projects                Project[]
 }
 
 model Project {
-  id        String    @id @default(cuid())
-  user      User      @relation(fields: [userId], references: [id])
-  userId    String
-  name      String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  flavors   Flavor[]
+  id              String        @id @default(cuid())
+  user            User          @relation(fields: [userId], references: [id])
+  userId          String
+  name            String
+  originalApkUrl  String?
+  sourceUrl       String?
+  packageName     String?
+  appName         String?
+  versionName     String?
+  versionCode     Int?
+  logoUrl         String?
+  status          ProjectStatus @default(PENDING)
+  logs            String        @default("")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  flavors         Flavor[]
+}
+
+enum ProjectStatus {
+  PENDING
+  DECOMPILING
+  READY
+  FAILED
 }
 
 model Flavor {
@@ -35,20 +54,32 @@ model Flavor {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   builds     Build[]
+  versions   FlavorVersion[]
+}
+
+model FlavorVersion {
+  id         String   @id @default(cuid())
+  flavor     Flavor   @relation(fields: [flavorId], references: [id])
+  flavorId   String
+  configJson Json
+  createdAt  DateTime @default(now())
+  builds     Build[]
 }
 
 model Build {
-  id          String     @id @default(cuid())
-  flavor      Flavor     @relation(fields: [flavorId], references: [id])
-  flavorId    String
-  status      BuildStatus
-  sourceUrl   String?
-  sourceType  String?
-  buildType   String?
-  downloadUrl String?
-  logs        String     @default("")
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id              String         @id @default(cuid())
+  flavor          Flavor         @relation(fields: [flavorId], references: [id])
+  flavorId        String
+  flavorVersion   FlavorVersion? @relation(fields: [flavorVersionId], references: [id])
+  flavorVersionId String?
+  status          BuildStatus
+  sourceUrl       String?
+  sourceType      String?
+  buildType       String?
+  downloadUrl     String?
+  logs            String         @default("")
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 }
 
 enum BuildStatus {

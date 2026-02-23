@@ -1,31 +1,41 @@
-FROM python:3.12-slim AS base
+FROM python:3.11-slim
 
-ENV PYTHONUNBUFFERED=1
-
+# Install system dependencies for APK tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-21-jre-headless \
-    zip \
-    unzip \
-    wget \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+  default-jdk-headless \
+  zip \
+  unzip \
+  wget \
+  && rm -rf /var/lib/apt/lists/*
 
-# Install apktool manually (wrapper script + jar)
-RUN wget -O /usr/local/bin/apktool.jar https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar && \
-    echo '#!/bin/sh\nexec java -jar /usr/local/bin/apktool.jar "$@"' > /usr/local/bin/apktool && \
-    chmod +x /usr/local/bin/apktool
+# Install Android build tools (zipalign, apksigner)
+RUN mkdir -p /opt/android-build-tools \
+  && wget -q https://dl.google.com/android/repository/build-tools_r34-linux.zip -O /tmp/build-tools.zip \
+  && unzip -q /tmp/build-tools.zip -d /opt/android-build-tools \
+  && rm /tmp/build-tools.zip
+
+ENV PATH="/opt/android-build-tools/android-14:${PATH}"
+
+# Install apktool
+RUN mkdir -p /usr/local/bin \
+  && wget -q https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -O /usr/local/bin/apktool \
+  && chmod +x /usr/local/bin/apktool \
+  && wget -q https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar -O /usr/local/bin/apktool.jar
+
+# Install bundletool for AAB generation
+RUN wget -q https://github.com/google/bundletool/releases/download/1.15.6/bundletool-all-1.15.6.jar \
+  -O /usr/local/bin/bundletool.jar
 
 WORKDIR /app
 
-COPY worker/requirements.txt ./requirements.txt
+# Create workdir for build artifacts
+RUN mkdir -p /app/workdir
+
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY worker/src ./src
-
-ENV BUILD_WORK_DIR=/app/workdir
-RUN mkdir -p ${BUILD_WORK_DIR}
+COPY . .
 
 EXPOSE 5000
 
-CMD ["python", "-m", "src.main"]
-
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "5000"]
