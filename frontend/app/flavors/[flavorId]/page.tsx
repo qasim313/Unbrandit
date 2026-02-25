@@ -131,7 +131,7 @@ export default function FlavorPage() {
   const [primaryColor, setPrimaryColor] = useState("#0ea5e9");
   const [splashBackgroundColor, setSplashBackgroundColor] = useState("#ffffff");
   const [logoUrl, setLogoUrl] = useState("");
-  const [overrides, setOverrides] = useState<{ type: "string" | "resource"; search: string; replace: string }[]>([]);
+  const [overrides, setOverrides] = useState<{ type: "string" | "resource" | "file"; search?: string; replace?: string; path?: string; replaceUrl?: string; fileName?: string }[]>([]);
 
   // Build state
   const [versions, setVersions] = useState<any[]>([]);
@@ -145,6 +145,8 @@ export default function FlavorPage() {
   const [error, setError] = useState<string | null>(null);
   const [buildError, setBuildError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadingKeystore, setUploadingKeystore] = useState(false);
+  const keystoreInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -463,7 +465,7 @@ export default function FlavorPage() {
                             const res = await api.post("/uploads/upload-logo", form, {
                               headers: { "Content-Type": "multipart/form-data" }
                             });
-                            setLogoUrl(res.data.url);
+                            setLogoUrl(res.data.displayUrl || res.data.url);
                           } catch (err) {
                             setError("Failed to upload logo");
                           }
@@ -577,21 +579,64 @@ export default function FlavorPage() {
                       </svg>
                       Download Keystore
                     </a>
-                    <span className="text-[10px] text-gh-faint italic">Passwords are stored securely and never shown in plain text.</span>
                   </div>
                 </div>
               ) : (
                 <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 flex items-start gap-3">
                   <div className="text-amber-400 mt-0.5 text-lg">ℹ️</div>
-                  <div>
+                  <div className="flex-1">
                     <h4 className="text-sm font-semibold text-amber-200/80">Signature pending</h4>
                     <p className="text-xs text-gh-muted mt-1 leading-relaxed">
                       A unique Play Store signing key will be automatically generated and linked to this flavor during its first build.
-                      You only need to provide the passwords and alias below.
+                      You only need to provide the passwords and alias below. Or, you can upload an existing keystore.
                     </p>
                   </div>
                 </div>
               )}
+
+              <div className="flex items-center gap-4 pt-1">
+                <input
+                  type="file"
+                  accept=".jks,.keystore"
+                  className="hidden"
+                  ref={keystoreInputRef}
+                  onChange={async (e: ChangeEvent<HTMLInputElement>) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setUploadingKeystore(true);
+                    const form = new FormData();
+                    form.append("file", file);
+                    try {
+                      const res = await api.post("/uploads/upload-keystore", form, {
+                        headers: { "Content-Type": "multipart/form-data" }
+                      });
+                      const newSigning = { ...(flavor?.configJson?.signing || {}), keystoreUrl: res.data.url };
+                      setFlavor(f => f ? { ...f, configJson: { ...f.configJson, signing: newSigning } } : null);
+                    } catch (err) {
+                      setError("Failed to upload keystore");
+                    } finally {
+                      setUploadingKeystore(false);
+                      if (keystoreInputRef.current) keystoreInputRef.current.value = '';
+                    }
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  className="h-8 text-xs bg-gh-surface border-gh-border"
+                  onClick={() => keystoreInputRef.current?.click()}
+                  disabled={uploadingKeystore}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  {uploadingKeystore ? "Uploading..." : "Upload existing keystore (.jks, .keystore)"}
+                </Button>
+                {flavor?.configJson?.signing?.keystoreUrl && (
+                  <span className="text-[10px] text-gh-faint italic">Passwords are stored securely and never shown in plain text.</span>
+                )}
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                 <FieldGroup label="Alias">
@@ -637,6 +682,7 @@ export default function FlavorPage() {
           {project && (
             <AdvancedConfig
               projectId={project.id}
+              flavorId={flavorId as string}
               overrides={overrides}
               setOverrides={setOverrides}
             />

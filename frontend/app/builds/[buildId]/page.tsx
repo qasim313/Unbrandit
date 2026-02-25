@@ -106,10 +106,21 @@ export default function BuildPage() {
                   onClick={async () => {
                     try {
                       const res = await api.get(`/builds/${buildId}/download`, { responseType: "blob" });
+
+                      // Extract filename from Content-Disposition header if present
+                      const disposition = res.headers["content-disposition"];
+                      let filename = `build-${buildId}.apk`; // fallback
+                      if (disposition && disposition.includes("filename=")) {
+                        const match = disposition.match(/filename="?([^"]+)"?/);
+                        if (match && match[1]) {
+                          filename = match[1];
+                        }
+                      }
+
                       const url = window.URL.createObjectURL(new Blob([res.data]));
                       const a = document.createElement("a");
                       a.href = url;
-                      a.download = `build-${buildId}.apk`;
+                      a.download = filename;
                       document.body.appendChild(a);
                       a.click();
                       window.URL.revokeObjectURL(url);

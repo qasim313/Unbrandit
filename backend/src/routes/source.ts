@@ -212,6 +212,54 @@ router.get("/:projectId/tree", async (req: AuthRequest, res: Response) => {
 });
 
 /**
+ * GET /source/:projectId/file/raw?path=res/mipmap-hdpi/ic_launcher.png
+ * Serves a binary file directly from the source zip with proper Content-Type.
+ * Used for image previews in the Advanced Config panel.
+ * MUST be defined before /:projectId/file to avoid Express route shadowing.
+ */
+router.get("/:projectId/file/raw", async (req: AuthRequest, res: Response) => {
+    try {
+        const { projectId } = req.params;
+        const filePath = req.query.path as string;
+        if (!filePath) {
+            return res.status(400).json({ error: "path query parameter required" });
+        }
+
+        const { sourceUrl } = await getProjectSource(projectId, req.user!.id);
+        const zipBuffer = await downloadSourceZip(sourceUrl);
+        const directory = await unzipper.Open.buffer(zipBuffer);
+
+        const entry = directory.files.find((f) => f.path === filePath);
+        if (!entry) {
+            return res.status(404).json({ error: "File not found in source" });
+        }
+
+        const buffer = await entry.buffer();
+
+        const ext = filePath.split(".").pop()?.toLowerCase() || "";
+        const mimeTypes: Record<string, string> = {
+            png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+            gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
+            bmp: "image/bmp", ico: "image/x-icon",
+            xml: "text/xml", json: "application/json",
+            txt: "text/plain", html: "text/html",
+        };
+        const contentType = mimeTypes[ext] || "application/octet-stream";
+
+        res.setHeader("Content-Type", contentType);
+        res.setHeader("Content-Length", buffer.length.toString());
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        return res.send(buffer);
+    } catch (err: any) {
+        if (err.message === "NOT_FOUND") {
+            return res.status(404).json({ error: "Project not found or no source available" });
+        }
+        console.error("source/file/raw error:", err);
+        return res.status(500).json({ error: "Failed to read file" });
+    }
+});
+
+/**
  * GET /source/:projectId/file?path=res/values/strings.xml
  * Returns the text content of a single file from the zip.
  */

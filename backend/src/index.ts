@@ -12,6 +12,7 @@ import buildRouter from "./routes/builds";
 import uploadRouter from "./routes/uploads";
 import internalRouter from "./routes/internal";
 import sourceRouter from "./routes/source";
+import blobProxyRouter from "./routes/blobProxy";
 import { initQueues } from "./queue/init";
 import { authMiddleware } from "./middleware/auth";
 import rateLimit from "express-rate-limit";
@@ -63,6 +64,7 @@ app.get("/health", (_req, res) => {
 // Apply rate limiting to all API routes
 app.use("/api", limiter);
 app.use("/api/auth", authRouter);
+app.use("/api/blob-proxy", blobProxyRouter); // Before auth — serves public blob content for img tags
 app.use("/api", authMiddleware);
 
 app.use("/api/projects", projectRouter);

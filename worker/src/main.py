@@ -107,13 +107,32 @@ def run_cmd(cmd: list[str], cwd: Path, env: dict | None = None) -> str:
 
 
 async def download_to_file(url: str, dest: Path) -> None:
-  # If it's an Azure Blob URL and we have a client, use it to avoid 409 Public Access denied
+  # Unwrap proxy URLs — extract the actual Azure blob URL
+  from urllib.parse import urlparse, parse_qs, unquote as url_unquote
+  for _ in range(5):
+    if "blob-proxy" in url:
+      try:
+        parsed = urlparse(url)
+        inner = parse_qs(parsed.query).get("url", [None])[0]
+        if inner:
+          url = inner
+          continue
+      except Exception:
+        pass
+    break
+
+  # If it's an Azure Blob URL and we have a client, use it to avoid 403 on private containers
   if blob_service_client and "blob.core.windows.net" in url:
     try:
-      # URL format: https://<account>.blob.core.windows.net/<container>/<blob_name>
-      parts = url.replace("https://", "").split("/")
-      container_name = parts[1]
-      blob_name = unquote("/".join(parts[2:]))
+      from urllib.parse import urlparse, unquote as url_unquote
+      parsed = urlparse(url)
+      # Path format: /<container>/<blob_name>
+      path_parts = parsed.path.lstrip("/").split("/", 1)
+      if len(path_parts) >= 2:
+        container_name = path_parts[0]
+        blob_name = url_unquote(path_parts[1])
+      else:
+        raise ValueError(f"Cannot parse blob path from URL: {_sanitize_log(url)}")
 
       blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
       with open(dest, "wb") as f:
@@ -121,7 +140,19 @@ async def download_to_file(url: str, dest: Path) -> None:
         data.readinto(f)
       return
     except Exception as e:
-      print(f"Failed to download via Azure client, falling back to HTTP: {_sanitize_log(str(e))}")
+      print(f"Azure blob download failed, trying backend proxy: {_sanitize_log(str(e))}")
+      # Fall back to backend proxy endpoint
+      try:
+        from urllib.parse import quote
+        backend_url = os.getenv("BACKEND_API_URL", "http://backend:4000")
+        proxy_url = f"{backend_url}/api/blob-proxy?url={quote(url, safe='')}"
+        async with httpx.AsyncClient(timeout=60 * 10) as client:
+          resp = await client.get(proxy_url)
+          resp.raise_for_status()
+          dest.write_bytes(resp.content)
+        return
+      except Exception as e2:
+        raise RuntimeError(f"All download methods failed for blob: {_sanitize_log(str(e))} / proxy: {_sanitize_log(str(e2))}")
 
   async with httpx.AsyncClient(timeout=60 * 10) as client:
     resp = await client.get(url)
@@ -345,16 +376,37 @@ def _darken_hex(hex_color: str, factor: float) -> str:
 
 def apply_custom_overrides(decompiled_dir: Path, overrides: list[dict]) -> None:
   """
-  Apply user-defined search-and-replace overrides across decompiled files.
-  Each override has: type (string|resource), search, replace.
+  Apply user-defined overrides across decompiled files.
+  Override types:
+    - "string": search/replace in strings.xml files
+    - "resource": search/replace across all XML files
+    - "file": replace an entire file with a downloaded replacement
   """
   if not overrides:
     return
 
   for override in overrides:
+    override_type = override.get("type", "string")
+
+    if override_type == "file":
+      # File replacement: download replaceUrl and overwrite the file at path
+      file_path = override.get("path", "")
+      replace_url = override.get("replaceUrl", "")
+      if not file_path or not replace_url:
+        continue
+      target = decompiled_dir / file_path
+      if target.exists():
+        try:
+          import httpx
+          resp = httpx.get(replace_url, timeout=60)
+          resp.raise_for_status()
+          target.write_bytes(resp.content)
+        except Exception as e:
+          print(f"Warning: Failed to replace file {file_path}: {e}")
+      continue
+
     search = override.get("search", "")
     replace = override.get("replace", "")
-    override_type = override.get("type", "string")
 
     if not search:
       continue
@@ -448,6 +500,29 @@ async def ensure_keystore(tmpdir: Path, signing_cfg: dict, build_id: str, flavor
   await update_flavor_config(flavor_id, new_config)
 
   return keystore_path
+
+
+def sign_aab(aab_path: Path, keystore: Path, signing_cfg: dict) -> None:
+  """
+  Use jarsigner to sign the AAB. AABs must be signed using jarsigner, not apksigner.
+  """
+  store_pass = signing_cfg["keystorePassword"]
+  key_pass = signing_cfg["keyPassword"]
+  alias = signing_cfg["keyAlias"]
+
+  cmd = [
+    "jarsigner",
+    "-verbose",
+    "-sigalg", "SHA256withRSA",
+    "-digestalg", "SHA-256",
+    "-keystore", str(keystore),
+    "-storepass", store_pass,
+    "-keypass", key_pass,
+    str(aab_path),
+    alias
+  ]
+
+  run_cmd(cmd, cwd=aab_path.parent)
 
 
 def sign_apk(input_apk: Path, output_apk: Path, keystore: Path, signing_cfg: dict) -> None:
@@ -594,6 +669,13 @@ async def process_apk_build(payload: BuildRequest, tmpdir: Path) -> dict[str, st
     await append_logs(payload.buildId, "Generating AAB from APK...\n")
     aab_path = await _convert_apk_to_aab(tmpdir, signed_apk, signing_cfg, payload.buildId)
     if aab_path and aab_path.exists():
+      if signing_cfg:
+        await append_logs(payload.buildId, "Signing AAB with jarsigner...\n")
+        try:
+          sign_aab(aab_path, keystore, signing_cfg)
+        except Exception as e:
+          await append_logs(payload.buildId, f"Failed to sign AAB: {str(e)[:200]}\n")
+          
       await append_logs(payload.buildId, "Uploading AAB to storage...\n")
       urls["aab"] = upload_to_blob(aab_path, "aab")
     else:
@@ -606,9 +688,11 @@ async def process_apk_build(payload: BuildRequest, tmpdir: Path) -> dict[str, st
 
 async def _convert_apk_to_aab(tmpdir: Path, apk_path: Path, signing_cfg: dict | None, build_id: str) -> Path | None:
   """
-  Convert APK to AAB using bundletool.
-  This creates an AAB from the APK's contents.
-  Note: This is a best-effort conversion. True AAB builds require Gradle source builds.
+  Convert APK to AAB using aapt2 + bundletool.
+  1. aapt2 convert: APK binary XML/resources.arsc → proto XML/resources.pb
+  2. Extract the proto-format APK
+  3. Repack into bundletool module zip structure
+  4. bundletool build-bundle: module zip → AAB
   """
   bundletool_jar = Path("/usr/local/bin/bundletool.jar")
   if not bundletool_jar.exists():
@@ -616,22 +700,93 @@ async def _convert_apk_to_aab(tmpdir: Path, apk_path: Path, signing_cfg: dict | 
     return None
 
   try:
-    # Step 1: Build APKs module from the APK
-    apks_path = tmpdir / "output.apks"
+    await append_logs(build_id, "Building AAB with bundletool...\n")
     aab_path = tmpdir / "output.aab"
 
-    # Use bundletool to create a universal APK set from the APK, then convert back
-    # The approach: build-bundle from a zip of the APK's contents
-    # Alternative: use aapt2 to convert resources, then bundle
+    # Step 1: Use aapt2 to convert APK from binary to proto format
+    proto_apk = tmpdir / "proto.apk"
+    try:
+      run_cmd(
+        ["aapt2", "convert", "--output-format", "proto", "-o", str(proto_apk), str(apk_path)],
+        cwd=tmpdir
+      )
+    except Exception as e:
+      await append_logs(build_id, f"aapt2 convert failed: {str(e)[:200]}\n")
+      return None
 
-    # Simpler approach: use the APK as-is for distribution
-    # For Play Store, we create a minimal AAB structure
-    await append_logs(build_id, "Building AAB with bundletool...\n")
+    if not proto_apk.exists():
+      await append_logs(build_id, "aapt2 convert produced no output.\n")
+      return None
 
-    # Create a base module zip from the APK
+    # Step 2: Extract the proto-format APK
+    extract_dir = tmpdir / "proto_extracted"
+    extract_dir.mkdir(exist_ok=True)
+    import zipfile
+    with zipfile.ZipFile(proto_apk, 'r') as apk_zip:
+      apk_zip.extractall(extract_dir)
+
+    # Step 3: Create module directory with bundletool's expected structure
+    module_dir = tmpdir / "base_module"
+    module_dir.mkdir(exist_ok=True)
+
+    # manifest/AndroidManifest.xml (now in proto format from aapt2 convert)
+    manifest_dir = module_dir / "manifest"
+    manifest_dir.mkdir(exist_ok=True)
+    src_manifest = extract_dir / "AndroidManifest.xml"
+    if src_manifest.exists():
+      shutil.copy2(src_manifest, manifest_dir / "AndroidManifest.xml")
+    else:
+      await append_logs(build_id, "AndroidManifest.xml not found after aapt2 convert.\n")
+      return None
+
+    # resources.pb (converted from resources.arsc by aapt2)
+    src_resources_pb = extract_dir / "resources.pb"
+    if src_resources_pb.exists():
+      shutil.copy2(src_resources_pb, module_dir / "resources.pb")
+
+    # dex/ — all .dex files
+    dex_dir = module_dir / "dex"
+    dex_dir.mkdir(exist_ok=True)
+    for dex_file in extract_dir.glob("*.dex"):
+      shutil.copy2(dex_file, dex_dir / dex_file.name)
+
+    # res/ — resource files (now in proto format)
+    src_res = extract_dir / "res"
+    if src_res.exists():
+      shutil.copytree(src_res, module_dir / "res")
+
+    # lib/ — native libraries
+    src_lib = extract_dir / "lib"
+    if src_lib.exists():
+      shutil.copytree(src_lib, module_dir / "lib")
+
+    # assets/
+    src_assets = extract_dir / "assets"
+    if src_assets.exists():
+      shutil.copytree(src_assets, module_dir / "assets")
+
+    # root/ — any other files (META-INF, kotlin, etc.)
+    root_dir = module_dir / "root"
+    root_dir.mkdir(exist_ok=True)
+    skip_names = {"AndroidManifest.xml", "resources.pb", "res", "lib", "assets"}
+    for item in extract_dir.iterdir():
+      if item.name in skip_names or item.suffix == ".dex":
+        continue
+      dst = root_dir / item.name
+      if item.is_dir():
+        shutil.copytree(item, dst)
+      else:
+        shutil.copy2(item, dst)
+
+    # Step 4: Create the base.zip module
     base_zip = tmpdir / "base.zip"
-    shutil.copy2(apk_path, base_zip)
+    with zipfile.ZipFile(base_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
+      for file_path in module_dir.rglob("*"):
+        if file_path.is_file():
+          arcname = str(file_path.relative_to(module_dir))
+          zf.write(file_path, arcname)
 
+    # Step 5: Run bundletool build-bundle
     run_cmd(
       [
         "java", "-jar", str(bundletool_jar),

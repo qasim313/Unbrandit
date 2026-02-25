@@ -1,4 +1,4 @@
-import { BlobServiceClient, generateBlobSASQueryParameters, BlobSASPermissions, StorageSharedKeyCredential, SASProtocol } from "@azure/storage-blob";
+import { BlobServiceClient, StorageSharedKeyCredential } from "@azure/storage-blob";
 
 let _blobServiceClient: BlobServiceClient | null = null;
 let _sharedKeyCredential: StorageSharedKeyCredential | null = null;
@@ -47,44 +47,24 @@ function parseBlobUrl(url: string): { containerName: string; blobName: string } 
 }
 
 /**
- * Generate a SAS URL for a given blob URL. Valid for 1 hour.
- * Returns the original URL if it's not a recognizable Azure blob URL
- * or if credentials are not available.
+ * Convert a raw Azure blob URL into a backend proxy URL.
+ * The proxy endpoint streams the blob content directly, avoiding
+ * SAS token version / expiry issues entirely.
  */
-export function generateSasUrl(blobUrl: string): string {
+export function generateProxyUrl(blobUrl: string): string {
     if (!blobUrl) return blobUrl;
-
     try {
-        const credential = getSharedKeyCredential();
-        if (!credential) return blobUrl;
-
         const parsed = parseBlobUrl(blobUrl);
         if (!parsed) return blobUrl;
-
-        const startsOn = new Date();
-        startsOn.setMinutes(startsOn.getMinutes() - 5); // 5 min clock skew tolerance
-
-        const expiresOn = new Date();
-        expiresOn.setHours(expiresOn.getHours() + 1); // 1 hour expiry
-
-        const sasToken = generateBlobSASQueryParameters(
-            {
-                containerName: parsed.containerName,
-                blobName: parsed.blobName,
-                permissions: BlobSASPermissions.parse("r"), // read only
-                startsOn,
-                expiresOn,
-                protocol: SASProtocol.HttpsAndHttp,
-            },
-            credential
-        ).toString();
-
-        return `${blobUrl}?${sasToken}`;
-    } catch (err) {
-        console.error("SAS URL generation failed, returning raw URL:", err);
+        const backendUrl = (process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 4000}`).replace(/\/$/, "");
+        return `${backendUrl}/api/blob-proxy?url=${encodeURIComponent(blobUrl)}`;
+    } catch {
         return blobUrl;
     }
 }
+
+/** @deprecated Use generateProxyUrl instead */
+export const generateSasUrl = generateProxyUrl;
 
 /**
  * Add SAS tokens to all blob URL fields in an object.
@@ -100,14 +80,14 @@ export function addSasUrls<T extends Record<string, any>>(obj: T, fields: string
 }
 
 /**
- * Recursively walk an object and sign ANY string value that looks like an Azure blob URL.
+ * Recursively walk an object and convert ANY Azure blob URL into a proxy URL.
  * This catches nested objects (e.g. flavor.project.logoUrl, configJson.branding.logoUrl).
  */
 export function deepSignBlobUrls<T>(obj: T): T {
     if (obj === null || obj === undefined) return obj;
     if (typeof obj === "string") {
-        if (obj.includes("blob.core.windows.net") && !obj.includes("sig=")) {
-            return generateSasUrl(obj) as any;
+        if (obj.includes("blob.core.windows.net") && !obj.includes("blob-proxy")) {
+            return generateProxyUrl(obj) as any;
         }
         return obj;
     }

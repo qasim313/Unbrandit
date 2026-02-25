@@ -4,6 +4,9 @@ const projectRoot = new URL(".", import.meta.url).pathname;
 const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
+  devIndicators: {
+    appIsrStatus: false,
+  },
   webpack: (config) => {
     config.resolve.alias = {
       ...(config.resolve.alias || {}),
