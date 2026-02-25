@@ -1,6 +1,6 @@
 <div align="center">
   <img src="logo.png" alt="Unbrandit Logo" width="120" />
-  <h1>Unbrandit ⚡️</h1>
+  <h1>Unbrandit</h1>
   <p><strong>A containerized SaaS platform for automated Android white-labeling and App Bundle generation.</strong></p>
 </div>
 
