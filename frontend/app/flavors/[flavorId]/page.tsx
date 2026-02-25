@@ -621,7 +621,7 @@ export default function FlavorPage() {
                   }}
                 />
                 <Button
-                  variant="outline"
+                  variant="default"
                   size="sm"
                   type="button"
                   className="h-8 text-xs bg-gh-surface border-gh-border"
